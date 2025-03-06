@@ -1,0 +1,85 @@
+<style>
+  body {
+    padding: 2em;
+  }
+  div {
+    margin: 1em;
+  }
+  input {
+    display: block;
+  }
+</style>
+
+<!-- <h1>Petma Plugin</h1>
+<div>
+  <label for="username" class="label">Username</label>
+  <input id="username" type="text" value="Your Petma username" class="input__field" />
+
+  <label for="name" class="label">Name</label>
+  <input id="name" type="text" value="Your Petma name" class="input__field" />
+
+  <label for="description" class="label">Description</label>
+  <input id="description" type="textarea" value="Your post goes here" class="textarea" rows="2"/>
+</div>
+
+<div class="switch">
+  <input id="dark-mode-on" class="switch__toggle" type="checkbox" />
+  <label class="switch__label" for="dark-mode-on">Dark mode</label>
+</div>
+
+<div class="radio">
+  <input
+    id="radioButton1"
+    type="radio"
+    class="radio__button"
+    value="1"
+    name="variantGroup"
+  />
+  <label for="radioButton1" class="radio__label">No Image</label>
+  <input
+    id="radioButton2"
+    type="radio"
+    class="radio__button"
+    value="2"
+    name="variantGroup"
+  />
+  <label for="radioButton2" class="radio__label">Single Image</label>
+  <input
+    id="radioButton3"
+    type="radio"
+    class="radio__button"
+    value="3"
+    name="variantGroup"
+  />
+  <label for="radioButton3" class="radio__label">Carousel</label>
+</div>
+
+<div>
+  <button class="button button--primary" id="submit-post">Submit</button>
+</div> -->
+
+<div>
+  <h2>Figma Variables into CSS Variables Settings</h2>
+  <label for="github-token">Personal Access Token:</label>
+  <input type="password" id="github-token" />
+  <br />
+  <label for="repo">Repository (owner/repo):</label>
+  <input type="text" id="repo" />
+  <br />
+  <label for="branch">Branch:</label>
+  <input type="text" id="branch" />
+  <br />
+  <label for="branch">Storage location (file/folder path):</label>
+  <input type="text" id="file-path"/>
+  <br />
+  <button id="export">Export & Sync</button>
+</div>
+<script>
+  document.getElementById("export").onclick = () => {
+    const githubtoken = document.getElementById('github-token').value;
+    const repo = document.getElementById('repo').value;
+    const branch = document.getElementById('branch').value;
+    const filepath = document.getElementById('file-path').value;
+    parent.postMessage({ pluginMessage: { githubtoken, repo, branch, filepath }}, '*');
+  };
+</script>
