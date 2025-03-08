@@ -1,15 +1,17 @@
 // interface TokenValue {
 //   value: string | number;
 //   type: "color" | "spacing" | "sizing" | "borderRadius" | "typography" | "other";
-//   description?: string;
+//   [key: string]: unknown; // Allow for dynamic keys like modeName
 // }
+
+// type TokenCategory = <any>;
+
+interface VariablesOutput {
+  [category: string]: any;
+}
 
 interface PluginMessage {
   message?: string;
-}
-
-interface VariablesOutput {
-  [key: string]: string;
 }
 
 interface Mode {
@@ -19,13 +21,35 @@ interface Mode {
 
 interface ColorVariable {
   name: string;
-  value: RGBA;
+  value: RGB | RGBA;
   mode?: string;
 }
 
-// Utility functions
+type ColorValue = {
+  r?: number;
+  g?: number;
+  b?: number;
+  a?: number;
+};
+
+// Helper function to send message to the user interface
 const sendUIMessage = (message: PluginMessage): void => {
   figma.ui.postMessage(message);
+};
+
+// Helper function to check if variable is an rgb or rgba color
+const isRGBColor = (value: unknown): value is RGB | RGBA => {
+  return typeof value === "object" && value !== null && "r" in value;
+};
+
+// Helper function to check if variable is an alias
+const isVariableAlias = (value: unknown): value is VariableAlias => {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "VARIABLE_ALIAS"
+  );
 };
 
 // Helper function to transform strings.
@@ -38,92 +62,198 @@ function transformString(string: string): string {
 
 // Helper function: Convert RGBA to HEX
 function rgbaToHex(r: number, g: number, b: number, a: number): string {
-  const to255 = (val: number) => Math.round(val * 255);
-  return `#${to255(r).toString(16)}${to255(g).toString(16)}${to255(b).toString(
-    16
-  )}${to255(a).toString(16)}`;
+  const toHex = (n: number) =>
+    Math.round(n * 255)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}${toHex(a)}`;
 }
 
+const normalizeColor = (value: ColorValue) => ({
+  r: value.r ?? 0,
+  g: value.g ?? 0,
+  b: value.b ?? 0,
+  a: value.a ?? 1,
+});
+
+function colorConstructor(value: ColorValue) {
+  if (!value || typeof value !== "object") {
+    return "#00000000";
+  }
+  const { r, g, b, a } = normalizeColor(value);
+
+  return rgbaToHex(r, g, b, a);
+}
+
+// Helper function to format color variables.
 const formatColorOutput = ({ name, value, mode }: ColorVariable): string => {
   const formattedName = transformString(name);
-  const formattedValue = rgbaToHex(value.r, value.g, value.b, value.a);
+  const formattedValue = colorConstructor(value);
   return mode
     ? `${formattedName}-${transformString(mode)}: ${formattedValue}`
     : `${formattedName}: ${formattedValue}`;
 };
 
-async function processColorVariable(
-  variable: Variable,
+async function processAliasVariable(
+  aliasId: string,
+  originalName: string,
   modes: Mode[],
+  numberOfModes: number,
   collectionId: string
-): Promise<string[]> {
+): Promise<VariablesOutput> {
   try {
+    const alias = await figma.variables.getVariableByIdAsync(aliasId);
+    if (!alias) return [];
+
     const colors: string[] = [];
-    const valuesByMode = variable.valuesByMode;
-    const numberOfModes = Object.keys(valuesByMode).length;
+    const aliasValuesByMode = alias.valuesByMode;
+
+    if (numberOfModes === 1) {
+      const [firstValue] = Object.values(aliasValuesByMode);
+      if (isRGBColor(firstValue)) {
+        colors.push(
+          formatColorOutput({ name: originalName, value: firstValue })
+        );
+        return colors;
+      }
+    }
+
+    const collection = await figma.variables.getVariableCollectionByIdAsync(
+      collectionId
+    );
 
     await Promise.all(
-      Object.entries(valuesByMode).map(async ([modeId, value]) => {
-        const modeName =
-          numberOfModes > 1
-            ? modes.find((mode) => mode.modeId === modeId)?.name
-            : undefined;
+      Object.entries(aliasValuesByMode).map(async ([modeId, value]) => {
+        const modeInfo = collection?.modes.find(
+          (mode) => mode.modeId === modeId
+        );
 
-        if (
-          typeof value === "object" &&
-          value !== null &&
-          "type" in value &&
-          value.type === "VARIABLE_ALIAS"
-        ) {
-          console.log('here');
-        } else {
-          const color = formatColorOutput({
-            name: variable.name,
-            value,
-            mode: modeName,
-          });
-          colors.push(color);
-          return;
+        if (isRGBColor(value)) {
+          colors.push(
+            formatColorOutput({
+              name: originalName,
+              value,
+              mode: modeInfo?.name,
+            })
+          );
         }
       })
     );
+
     return colors;
   } catch (error) {
-    console.error("Error processing color variable:", error);
+    console.error("Error processing alias variable:", error);
     return [];
   }
 }
 
-async function handleVariables(): Promise<void> {
+async function processColorVariable(
+  variable: Variable,
+  modes: Mode[],
+  collectionId: string
+): Promise<VariablesOutput> {
+  try {
+    const colorJSONOutput: VariablesOutput = {};
+    const valuesByMode = variable.valuesByMode;
+    const numberOfModes = Object.keys(valuesByMode).length;
+    const nameParts = variable.name
+      .split("/")
+      .map((part) => part.trim().toLowerCase().replace(/\s+/g, "-"));
+    const [category, key] = nameParts;
+    if (!colorJSONOutput[category]) {
+      colorJSONOutput[category] = {};
+    }
+    
+    if (!colorJSONOutput[category][key]) {
+      colorJSONOutput[category][key] = {};
+    }
+    console.log('nameParts', category, key);
+
+    Object.entries(valuesByMode).map(([modeId, value]) => {
+      const modeName =
+        numberOfModes > 1
+          ? modes.find((mode) => mode.modeId === modeId)?.name
+          : undefined;
+
+      if (isRGBColor(value)) {
+        if (modeName) {
+          Object.assign(
+            colorJSONOutput,
+            (colorJSONOutput[category][key][modeName] = {
+              value: colorConstructor(value),
+              type: "color",
+            })
+          );
+        } else {
+          Object.assign(
+            colorJSONOutput,
+            (colorJSONOutput[category][key] = {
+              value: colorConstructor(value),
+              type: "color",
+            })
+          );
+        }
+      }
+      // if (isVariableAlias(value)) {
+      //   const aliasColors = await processAliasVariable(
+      //     value.id,
+      //     variable.name,
+      //     modes,
+      //     numberOfModes,
+      //     collectionId,
+      //   );
+
+      //   if (!colorsJSONOutput[category]) {
+      //     colorsJSONOutput[category] = {};
+      //   }
+
+      //   if (!colorsJSONOutput[category][key]) {
+      //     colorsJSONOutput[category][key] = {};
+      //   }
+
+      //   if (modeName) {
+      //     Object.assign(colorsJSONOutput[category][key][modeName], aliasColors);
+      //   } else {
+      //     Object.assign(colorsJSONOutput[category][key], aliasColors);
+      //   }
+      // }
+    });
+    return colorJSONOutput;
+  } catch (error) {
+    return [];
+  }
+}
+
+async function handleVariables(): Promise<object> {
   try {
     const collections =
       await figma.variables.getLocalVariableCollectionsAsync();
     const allVariables: VariablesOutput = {};
 
     await Promise.all(
-      collections.flatMap(collection => 
+      collections.flatMap((collection) =>
         collection.variableIds.map(async (variableId) => {
           const variable = await figma.variables.getVariableByIdAsync(
             variableId
           );
           if (variable?.resolvedType === "COLOR") {
-            const colors = await processColorVariable(
+            if (!allVariables["colors"]) {
+              allVariables["colors"] = {};
+            }
+
+            const color = await processColorVariable(
               variable,
               collection.modes,
               collection.id
             );
 
-            colors.forEach((color) => {
-              const [key, value] = color.split(": ");
-              allVariables[key] = value;
-            });
+            Object.assign(allVariables, color);
           }
         })
       )
     );
     return allVariables;
   } catch (error) {
-    console.error("Error processing color variable:", error);
     return {};
   }
 
