@@ -59,27 +59,11 @@
 </div> -->
 
 <div>
-  <h2>Figma Variables into CSS Variables Settings</h2>
-  <label for="github-token">Personal Access Token:</label>
-  <input type="password" id="github-token" />
-  <br />
-  <label for="repo">Repository (owner/repo):</label>
-  <input type="text" id="repo" />
-  <br />
-  <label for="branch">Branch:</label>
-  <input type="text" id="branch" />
-  <br />
-  <label for="branch">Storage location (file/folder path):</label>
-  <input type="text" id="file-path"/>
-  <br />
+  <h2>Export Figma Variables into JSON</h2>
   <button id="export">Export & Sync</button>
 </div>
 <script>
   document.getElementById("export").onclick = () => {
-    const githubtoken = document.getElementById('github-token').value;
-    const repo = document.getElementById('repo').value;
-    const branch = document.getElementById('branch').value;
-    const filepath = document.getElementById('file-path').value;
-    parent.postMessage({ pluginMessage: { githubtoken, repo, branch, filepath }}, '*');
+    parent.postMessage({ pluginMessage: { }}, '*');
   };
 </script>

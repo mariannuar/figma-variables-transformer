@@ -167,57 +167,45 @@ async function processColorVariable(
     if (!colorJSONOutput[category][key]) {
       colorJSONOutput[category][key] = {};
     }
-    console.log('nameParts', category, key);
 
-    Object.entries(valuesByMode).map(([modeId, value]) => {
-      const modeName =
-        numberOfModes > 1
-          ? modes.find((mode) => mode.modeId === modeId)?.name
-          : undefined;
-
+    for (const [modeId, value] of Object.entries(valuesByMode)) {
+      // Check if value doesn't references another color variable
       if (isRGBColor(value)) {
-        if (modeName) {
-          Object.assign(
-            colorJSONOutput,
-            (colorJSONOutput[category][key][modeName] = {
-              value: colorConstructor(value),
-              type: "color",
-            })
-          );
-        } else {
-          Object.assign(
-            colorJSONOutput,
-            (colorJSONOutput[category][key] = {
-              value: colorConstructor(value),
-              type: "color",
-            })
-          );
+        const modeName =
+        numberOfModes > 1
+        ? modes.find((mode) => mode.modeId === modeId)?.name
+        : undefined;
+        const colorValue = {
+          value: colorConstructor(value),
+          type: "color",
+        };
+
+        let currentLevel = colorJSONOutput;
+
+      // First nesting level
+        for (let i = 0; i < nameParts.length; i++) {
+          const part = nameParts[i];
+
+          // If we’re at the last part, assign value
+          if (i === nameParts.length - 1) {
+            // Insert modeName as level *if* multiple modes exist
+            if (modeName) {
+              // Create intermediate object
+              if (!currentLevel[modeName]) {
+                currentLevel[modeName] = {};
+              }
+              currentLevel = currentLevel[modeName];
+            }
+
+            currentLevel[part] = colorValue;
+          } else {
+            currentLevel[part] = currentLevel[part] || {};
+            currentLevel = currentLevel[part];
+          }
         }
       }
-      // if (isVariableAlias(value)) {
-      //   const aliasColors = await processAliasVariable(
-      //     value.id,
-      //     variable.name,
-      //     modes,
-      //     numberOfModes,
-      //     collectionId,
-      //   );
-
-      //   if (!colorsJSONOutput[category]) {
-      //     colorsJSONOutput[category] = {};
-      //   }
-
-      //   if (!colorsJSONOutput[category][key]) {
-      //     colorsJSONOutput[category][key] = {};
-      //   }
-
-      //   if (modeName) {
-      //     Object.assign(colorsJSONOutput[category][key][modeName], aliasColors);
-      //   } else {
-      //     Object.assign(colorsJSONOutput[category][key], aliasColors);
-      //   }
-      // }
-    });
+    }
+    console.log('colorJSONOutput', colorJSONOutput);
     return colorJSONOutput;
   } catch (error) {
     return [];
@@ -230,33 +218,23 @@ async function handleVariables(): Promise<object> {
       await figma.variables.getLocalVariableCollectionsAsync();
     const allVariables: VariablesOutput = {};
 
-    await Promise.all(
-      collections.flatMap((collection) =>
-        collection.variableIds.map(async (variableId) => {
-          const variable = await figma.variables.getVariableByIdAsync(
-            variableId
+    for (const collection of collections) {
+      for (const variableId of collection.variableIds) {
+        const variable = await figma.variables.getVariableByIdAsync(variableId);
+        if (variable?.resolvedType === "COLOR") {
+          const colorOutput = await processColorVariable(
+            variable,
+            collection.modes,
+            collection.id
           );
-          if (variable?.resolvedType === "COLOR") {
-            if (!allVariables["colors"]) {
-              allVariables["colors"] = {};
-            }
-
-            const color = await processColorVariable(
-              variable,
-              collection.modes,
-              collection.id
-            );
-
-            Object.assign(allVariables, color);
-          }
-        })
-      )
-    );
+          Object.assign(allVariables, colorOutput);
+        }
+      }
+    }
     return allVariables;
   } catch (error) {
     return {};
   }
-
   // return JSON.stringify(allVariables, null, 2);
 }
 
@@ -274,35 +252,13 @@ async function handleVariables(): Promise<object> {
 //   return typeMap[category] || "other";
 // }
 
-// async function pushToGitHub(token: string, repo: string, branch: string, filePath: string, fileContent: string) {
-//   const apiBase = `https://api.github.com/repos/${repo}`;
-//   const headers = {
-//     "Authorization": `Bearer ${token}`,
-//     "Accept": "application/vnd.github.v3+json",
-//     "Content-Type": "application/json",
-//   };
-
-//   // console.log('pushToGitHub', apiBase, headers, branch, filePath, fileContent);
-// }
-
 // This shows the HTML page in "ui.html".
 figma.showUI(__html__);
 figma.ui.resize(500, 500);
-figma.ui.onmessage = async (pluginMessage) => {
-  const { githubtoken, repo, branch, filepath } = pluginMessage;
-  console.log("REPO", githubtoken, repo, branch, filepath);
-
+figma.ui.onmessage = async () => {
   try {
     const variablesTransformed = await handleVariables();
-    console.log("VARIABLES", variablesTransformed);
-
-    // await pushToGitHub(
-    //   githubtoken,
-    //   repo,
-    //   branch,
-    //   filepath,
-    //   cssFile
-    // );
+    console.log("VARIABLES TRANSFORMED", variablesTransformed);
     // figma.closePlugin();
   } catch (error) {
     sendUIMessage({ message: "An unexpected error occurred" });
